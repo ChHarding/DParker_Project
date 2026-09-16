@@ -1,4 +1,5 @@
 HCI 584 PROJECT SPEC: ELECTRIC VEHICLE CHARGING STATION LOCATOR.
 
 GENERAL DESCRIPTION
+
 The Electric Vehicle Charging Station Locator is a program designed to help EV drivers find nearby charging stations that meet their needs. The system will allow users to enter a location and search for charging stations based on factors such as distance, connector type, charging speed, price, and availability. The goal is to make finding a suitable charging station easier without requiring users to search through multiple charging-network apps or websites. This builds off of the original project sketch, which identified EV drivers, long-distance travelers, and new EV drivers as the primary users. The application will use publicly available EV charging-station data from an API or dataset, such as the National Renewable Energy Laboratory (NLR/NREL) or Open Charge Map, both of which were identified as possible data sources in the original sketch. The app will process this data and filter the available stations based on the user's set preferenaces.
