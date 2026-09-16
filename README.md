@@ -1,1 +1,2 @@
 # DParker_Project
+the project is an electric vehicle (EV) Charging Station Locatr deskigned to help electric vehicle drivers quickly find charging stations. The applicationn woiuld display on an interactive map and provide information such as distance, connector type, charging speed, cost, and availability. Users could filter stations based on their needs.
