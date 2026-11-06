@@ -12,3 +12,9 @@
 - **Expected:**
 - **Actual:**
 - **Status:**
+
+## Version 2 — Professor feedback
+
+- Version 1 feedback identified the `urlopen()` SSL certificate problem as the first issue to address.
+- Version 2 replaces `urllib` with `requests` while keeping SSL verification enabled.
+- If the SSL certificate error persists, investigate the local Python/macOS certificate configuration instead of disabling certificate verification.

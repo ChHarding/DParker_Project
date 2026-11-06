@@ -8,9 +8,7 @@ back to the included local JSON dataset so the workflow can still be tested.
 import json
 import math
 from pathlib import Path
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
+import requests
 
 
 DATA_FILE = Path(__file__).parent / "data" / "sample_stations.json"
@@ -71,7 +69,20 @@ def calculate_distance_miles(lat1, lon1, lat2, lon2):
 
 
 def fetch_arcgis_stations(latitude, longitude, max_results=100):
-    """Request nearby electric stations from the ArcGIS Feature Service."""
+    """Request nearby electric stations from the ArcGIS Feature Service.
+
+    Args:
+        latitude: Search latitude in decimal degrees.
+        longitude: Search longitude in decimal degrees.
+        max_results: Maximum number of records to request.
+
+    Returns:
+        The decoded JSON response from ArcGIS.
+
+    Raises:
+        requests.RequestException: If the HTTP request fails.
+        ValueError: If ArcGIS returns an error in an otherwise valid response.
+    """
     params = {
         "where": "fuel_type_code='ELEC'",
         "outFields": ARCGIS_FIELDS,
@@ -86,14 +97,24 @@ def fetch_arcgis_stations(latitude, longitude, max_results=100):
         "f": "json",
     }
 
-    url = f"{ARCGIS_QUERY_URL}?{urlencode(params)}"
-    request = Request(
-        url,
-        headers={"User-Agent": "EV-Charging-Locator-HCI5840/1.0"},
+    response = requests.get(
+        ARCGIS_QUERY_URL,
+        params=params,
+        headers={"User-Agent": "EV-Charging-Locator-HCI5840/2.0"},
+        timeout=15,
     )
+    response.raise_for_status()
 
-    with urlopen(request, timeout=15) as response:
-        return json.loads(response.read().decode("utf-8"))
+    data = response.json()
+    if "error" in data:
+        error = data["error"]
+        message = error.get("message", "Unknown ArcGIS service error.")
+        details = "; ".join(error.get("details", []))
+        if details:
+            message = f"{message} {details}"
+        raise ValueError(message)
+
+    return data
 
 
 def parse_power_kw(charging_units):
@@ -248,7 +269,7 @@ def get_charging_stations(latitude, longitude):
         ]
         stations = [s for s in stations if s["distance_miles"] is not None]
         return stations, "ArcGIS Alternative Fueling Stations"
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError) as error:
+    except (requests.RequestException, ValueError, json.JSONDecodeError, OSError) as error:
         print(f"\nLive ArcGIS request failed: {error}")
         print("Falling back to the local sample dataset.\n")
 
@@ -345,8 +366,18 @@ def format_price(value):
     return f"${value:.2f}/kWh" if isinstance(value, (int, float)) else "Unknown"
 
 
-def get_float(prompt, allow_blank=True, minimum=0):
-    """Safely read an optional number from the CLI."""
+def get_float(prompt, allow_blank=True, minimum=0, maximum=None):
+    """Safely read an optional numeric value from the CLI.
+
+    Args:
+        prompt: Text shown before the user enters a value.
+        allow_blank: Whether Enter may be used to skip the value.
+        minimum: Smallest accepted value.
+        maximum: Largest accepted value, if provided.
+
+    Returns:
+        A validated float, or None when blank input is allowed.
+    """
     while True:
         value = input(prompt).strip()
         if allow_blank and value == "":
@@ -356,6 +387,9 @@ def get_float(prompt, allow_blank=True, minimum=0):
             if number < minimum:
                 print(f"Please enter a number >= {minimum}.")
                 continue
+            if maximum is not None and number > maximum:
+                print(f"Please enter a number <= {maximum}.")
+                continue
             return number
         except ValueError:
             print("Please enter a valid number.")
@@ -364,8 +398,8 @@ def get_float(prompt, allow_blank=True, minimum=0):
 def get_location():
     """Read latitude and longitude from the user."""
     print("\nEnter the search location.")
-    latitude = get_float("Latitude: ", allow_blank=False, minimum=-90)
-    longitude = get_float("Longitude: ", allow_blank=False, minimum=-180)
+    latitude = get_float("Latitude: ", allow_blank=False, minimum=-90, maximum=90)
+    longitude = get_float("Longitude: ", allow_blank=False, minimum=-180, maximum=180)
     return latitude, longitude
 
 
