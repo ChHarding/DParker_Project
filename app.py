@@ -9,6 +9,7 @@ import json
 import math
 from pathlib import Path
 import requests
+import ast
 
 
 DATA_FILE = Path(__file__).parent / "data" / "sample_stations.json"
@@ -117,39 +118,44 @@ def fetch_arcgis_stations(latitude, longitude, max_results=100):
     return data
 
 
+
 def parse_power_kw(charging_units):
-    """Try to find a numeric charging power value in ArcGIS charging-unit data."""
+    """Extract the highest available charging power in kilowatts."""
     if not charging_units:
         return None
 
+    # ArcGIS may return this field as a Python-style string
+    # rather than valid JSON.
     if isinstance(charging_units, str):
         try:
             charging_units = json.loads(charging_units)
         except json.JSONDecodeError:
-            return None
+            try:
+                charging_units = ast.literal_eval(charging_units)
+            except (ValueError, SyntaxError):
+                return None
 
-    powers = []
+    power_values = []
 
-    def search(value):
-        if isinstance(value, dict):
-            for key, item in value.items():
-                normalized_key = str(key).lower().replace("_", "")
-                if normalized_key in {"powerkw", "powerkilowatts"}:
-                    if isinstance(item, (int, float)):
-                        powers.append(float(item))
-                    else:
-                        try:
-                            powers.append(float(item))
-                        except (TypeError, ValueError):
-                            pass
+    def find_power(data):
+        """Recursively find power_kw values in nested data."""
+        if isinstance(data, dict):
+            for key, value in data.items():
+                normalized_key = key.lower().replace("_", "")
+
+                if normalized_key in ("powerkw", "powerkilowatts"):
+                    if isinstance(value, (int, float)) and not isinstance(value, bool):
+                        power_values.append(value)
                 else:
-                    search(item)
-        elif isinstance(value, list):
-            for item in value:
-                search(item)
+                    find_power(value)
 
-    search(charging_units)
-    return max(powers) if powers else None
+        elif isinstance(data, list):
+            for item in data:
+                find_power(item)
+
+    find_power(charging_units)
+
+    return max(power_values) if power_values else None
 
 
 def parse_price_per_kwh(pricing_text):
@@ -310,181 +316,208 @@ def filter_stations(stations, max_distance=None, connector=None,
     )
 
 
-def display_stations(stations):
-    """Display a compact numbered list of matching stations."""
-    if not stations:
-        print("\nNo stations matched those filters.")
-        return
-
-    print("\nMatching charging stations:")
-    print("-" * 72)
-
-    for index, station in enumerate(stations, start=1):
-        distance = station.get("distance_miles")
-        distance_text = f"{distance:.1f} mi" if distance is not None else "distance unknown"
-        power = station.get("power_kw")
-        power_text = f"{power:g} kW" if isinstance(power, (int, float)) else "power unknown"
-        price = station.get("price_per_kwh")
-        price_text = f"${price:.2f}/kWh" if isinstance(price, (int, float)) else "price unknown"
-
-        print(
-            f"{index}. {station['name']} | {distance_text} | "
-            f"{station['connector']} | {power_text} | {price_text} | "
-            f"{station['availability']}"
-        )
-
-    print("-" * 72)
-
-
-def display_station_details(station):
-    """Display useful Version 1 details for one station."""
-    print("\nStation Details")
-    print("=" * 40)
-    print(f"Name:        {station.get('name', 'Unknown')}")
-    print(f"Address:     {station.get('address', 'Unknown')}")
-    print(f"City/State:  {station.get('city', '')}, {station.get('state', '')}")
-    print(f"Distance:    {format_distance(station.get('distance_miles'))}")
-    print(f"Connector:   {station.get('connector', 'Unknown')}")
-    print(f"Power:       {format_power(station.get('power_kw'))}")
-    print(f"Price:       {format_price(station.get('price_per_kwh'))}")
-    print(f"Availability:{station.get('availability', 'Unknown')}")
-    print(f"Operator:    {station.get('operator', 'Unknown')}")
-    print(f"Chargers:    {station.get('chargers', 'Unknown')}")
-    print(f"Hours:       {station.get('hours', 'Unknown')}")
-    print(f"Pricing info:{station.get('pricing_details', 'Unknown')}")
-
-
 def format_distance(value):
+    """Format a distance value for display."""
     return f"{value:.1f} miles" if isinstance(value, (int, float)) else "Unknown"
 
 
 def format_power(value):
+    """Format charging power for display."""
     return f"{value:g} kW" if isinstance(value, (int, float)) else "Unknown"
 
 
 def format_price(value):
+    """Format charging price for display."""
     return f"${value:.2f}/kWh" if isinstance(value, (int, float)) else "Unknown"
 
 
-def get_float(prompt, allow_blank=True, minimum=0, maximum=None):
-    """Safely read an optional numeric value from the CLI.
+def main():
+    """Run the Streamlit EV charging station locator."""
+    import streamlit as st
+    from geocoding import geocode_address
 
-    Args:
-        prompt: Text shown before the user enters a value.
-        allow_blank: Whether Enter may be used to skip the value.
-        minimum: Smallest accepted value.
-        maximum: Largest accepted value, if provided.
+    st.set_page_config(
+        page_title="EV Charging Station Locator",
+        page_icon="🔌",
+        layout="wide",
+    )
 
-    Returns:
-        A validated float, or None when blank input is allowed.
-    """
-    while True:
-        value = input(prompt).strip()
-        if allow_blank and value == "":
-            return None
-        try:
-            number = float(value)
-            if number < minimum:
-                print(f"Please enter a number >= {minimum}.")
-                continue
-            if maximum is not None and number > maximum:
-                print(f"Please enter a number <= {maximum}.")
-                continue
-            return number
-        except ValueError:
-            print("Please enter a valid number.")
+    st.title("🔌 EV Charging Station Locator")
+    st.write(
+        "Find electric vehicle charging stations near an address, "
+        "city, or landmark."
+    )
 
+    st.subheader("Where are you looking for charging stations?")
 
-def get_location():
-    """Read latitude and longitude from the user."""
-    print("\nEnter the search location.")
-    latitude = get_float("Latitude: ", allow_blank=False, minimum=-90, maximum=90)
-    longitude = get_float("Longitude: ", allow_blank=False, minimum=-180, maximum=180)
-    return latitude, longitude
+    with st.form("search_form"):
+        address = st.text_input(
+            "Enter an address or location",
+            placeholder="Example: Iowa State University, Ames, IA",
+        )
+        search_button = st.form_submit_button("Find Charging Stations")
 
+    st.sidebar.header("Search Filters")
 
-def get_filters():
-    """Collect optional search filters from the user."""
-    print("\nOptional filters — press Enter to skip a filter.")
-    max_distance = get_float("Maximum distance in miles: ")
-    connector = input("Connector type (e.g. CCS, NACS, J1772): ").strip() or None
-    min_power = get_float("Minimum charging speed in kW: ")
-    max_price = get_float("Maximum price per kWh: ")
-    available_answer = input("Available stations only? (y/n): ").strip().lower()
-    available_only = available_answer in {"y", "yes"}
+    max_distance = st.sidebar.number_input(
+        "Maximum distance (miles)",
+        min_value=1.0,
+        max_value=25.0,
+        value=25.0,
+    )
 
-    return {
-        "max_distance": max_distance,
-        "connector": connector,
-        "min_power": min_power,
-        "max_price": max_price,
-        "available_only": available_only,
+    connector_options = {
+        "Any": None,
+        "CCS": "J1772COMBO",
+        "NACS": "TESTLA",
+        "J1772": "J1772",
+        "CHAdeMO": "CHADEMO",
     }
 
+    connector = st.sidebar.selectbox(
+        "Connector type",
+        list(connector_options.keys()),
+    )
 
-def choose_station(stations):
-    """Let the user select one station from the displayed results."""
-    if not stations:
-        return None
+    min_power = st.sidebar.number_input(
+        "Minimum charging speed (kW)",
+        min_value=0.0,
+        value=0.0,
+        step=5.0,
+    )
 
-    while True:
-        choice = input(
-            "\nEnter a station number for details, or press Enter to search again: "
-        ).strip()
-        if choice == "":
-            return None
-        try:
-            index = int(choice) - 1
-            if 0 <= index < len(stations):
-                return stations[index]
-            print("Please choose one of the listed station numbers.")
-        except ValueError:
-            print("Please enter a station number.")
+    max_price = st.sidebar.number_input(
+        "Maximum price ($/kWh)",
+        min_value=0.0,
+        value=0.0,
+        step=0.05,
+        help="Enter 0 to ignore this filter.",
+    )
 
+    available_only = st.sidebar.checkbox(
+        "Show available stations only"
+    )
 
-def run_search():
-    """Run one complete search from location input through station details."""
-    latitude, longitude = get_location()
-    stations, source = get_charging_stations(latitude, longitude)
+    if search_button:
+        if not address.strip():
+            st.error("Please enter an address or location.")
+            return
 
-    print(f"\nStation data source: {source}")
-    print(f"Stations loaded: {len(stations)}")
-
-    if source == "local sample data":
-        print("Note: sample distances are fixed test values.")
-
-    filters = get_filters()
-    matches = filter_stations(stations, **filters)
-    display_stations(matches)
-
-    selected_station = choose_station(matches)
-    if selected_station:
-        display_station_details(selected_station)
-
-
-def main():
-    """Run the menu-driven Version 1 CLI."""
-    print("EV CHARGING STATION LOCATOR — VERSION 1")
-    print("Find and filter nearby EV charging stations.\n")
-
-    while True:
-        print("\n1. Search for charging stations")
-        print("2. Exit")
-        choice = input("Choose an option: ").strip()
-
-        if choice == "1":
+        with st.spinner("Finding your location..."):
             try:
-                run_search()
-            except KeyboardInterrupt:
-                print("\nSearch cancelled.")
+                coordinates = geocode_address(address.strip())
+
+                if coordinates is None:
+                    st.error(
+                        "We couldn't find that location. "
+                        "Try entering a more specific address."
+                    )
+                    return
+
+            except requests.RequestException as error:
+                st.error(f"Location search failed: {error}")
+                return
+
+        latitude, longitude = coordinates
+
+        st.success(
+            f"Location found! Coordinates: "
+            f"{latitude:.5f}, {longitude:.5f}"
+        )
+
+        with st.spinner("Searching for nearby charging stations..."):
+            try:
+                stations, source = get_charging_stations(
+                    latitude,
+                    longitude,
+                )
             except Exception as error:
-                print(f"\nUnexpected error: {error}")
-                print("See bugs.md if this problem needs to be tracked.")
-        elif choice == "2":
-            print("Goodbye!")
-            break
-        else:
-            print("Please enter 1 or 2.")
+                st.error(f"Unable to retrieve charging stations: {error}")
+                return
+
+        st.caption(f"Data source: {source}")
+
+        if source == "local sample data":
+            st.warning(
+                "Live station data is unavailable. "
+                "Showing local sample data instead."
+            )
+
+        filters = {
+            "max_distance": max_distance,
+            "connector": connector_options[connector],
+            "min_power": min_power if min_power > 0 else None,
+            "max_price": max_price if max_price > 0 else None,
+            "available_only": available_only,
+        }
+
+        matches = filter_stations(stations, **filters)
+
+        st.subheader("Charging Station Results")
+
+        col1, col2 = st.columns(2)
+        col1.metric("Stations found", len(matches))
+        col2.metric("Stations within search area", len(stations))
+
+        if not matches:
+            st.info(
+                "No stations matched your filters. "
+                "Try increasing the distance or changing your filters."
+            )
+            return
+
+        map_data = [
+            {
+                "latitude": station["latitude"],
+                "longitude": station["longitude"],
+            }
+            for station in matches
+            if station.get("latitude") is not None
+            and station.get("longitude") is not None
+        ]
+
+        if map_data:
+            st.subheader("Station Map")
+            st.map(map_data, latitude="latitude", longitude="longitude")
+
+        for index, station in enumerate(matches, start=1):
+            with st.expander(
+                f"{index}. {station['name']} — "
+                f"{format_distance(station.get('distance_miles'))}"
+            ):
+                st.write(f"**Address:** {station.get('address', 'Unknown')}")
+                st.write(
+                    f"**City/State:** "
+                    f"{station.get('city', '')}, {station.get('state', '')}"
+                )
+                st.write(
+                    f"**Connector:** {station.get('connector', 'Unknown')}"
+                )
+                st.write(
+                    f"**Charging speed:** "
+                    f"{format_power(station.get('power_kw'))}"
+                )
+                st.write(
+                    f"**Price:** "
+                    f"{format_price(station.get('price_per_kwh'))}"
+                )
+                st.write(
+                    f"**Availability:** "
+                    f"{station.get('availability', 'Unknown')}"
+                )
+                st.write(
+                    f"**Network/operator:** "
+                    f"{station.get('operator', 'Unknown')}"
+                )
+                st.write(
+                    f"**Number of chargers:** "
+                    f"{station.get('chargers', 'Unknown')}"
+                )
+                st.write(f"**Hours:** {station.get('hours', 'Unknown')}")
+                st.write(
+                    f"**Pricing information:** "
+                    f"{station.get('pricing_details', 'Unknown')}"
+                )
 
 
 if __name__ == "__main__":
