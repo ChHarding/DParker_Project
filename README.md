@@ -1,99 +1,89 @@
-# DParker_Project
-the project is an electric vehicle (EV) Charging Station Locatr deskigned to help electric vehicle drivers quickly find charging stations. The applicationn woiuld display on an interactive map and provide information such as distance, connector type, charging speed, cost, and availability. Users could filter stations based on their needs.
+# EV Charging Station Locator
 
-# EV Charging Station Locator — Version 1
-
-This Python command-line app helps EV drivers find nearby charging stations and filter them by distance, connector type, charging speed, price, and availability.
-
-## Version 1
-
-Version 1 focuses on the project's core data flow rather than a graphical interface:
-
-1. Enter a latitude and longitude.
-2. Query the ArcGIS Alternative Fueling Stations Feature Service for nearby electric charging stations.
-3. Convert the ArcGIS records into the simpler station format used by the program.
-4. Filter the stations by distance, connector, charging speed, price, and availability.
-5. View a ranked list of matching stations.
-6. Select a station to view more details.
-7. Repeat the search or exit.
-
-The eventual version could use a web/mobile-style interface with an interactive map, but the current version is intentionally CLI-based as required by the project specification.
-
-## Files
-
-- `main.py` — main program and all Version 1 functions.
-- `bugs.md` — bug/issue tracking notes.
-- `.gitignore` — Python/Git ignore rules, including `keys.py` in case credentials are needed for a future service.
-- `LICENSE` — MIT license.
-- `docs/` — project sketch and project specification PDFs.
-- `data/sample_stations.json` — small local dataset used as a fallback for testing.
-
-# EV Charging Station Locator — Version 1
-
-This Python command-line app helps EV drivers find nearby charging stations and filter them by distance, connector type, charging speed, price, and availability.
+An interactive web application that helps electric vehicle (EV) drivers find nearby charging stations. Users can search by address or location, view stations on a map, and filter results based on distance, connector type, charging speed, price, and availability.
 
 ## Version 2
 
-Version 2 focuses on the project's core data flow rather than a graphical interface:
+Version 2 upgrades the original command-line application into a web-based interface using Streamlit.
 
-1. Enter a latitude and longitude.
-2. Query the ArcGIS Alternative Fueling Stations Feature Service for nearby electric charging stations.
-3. Convert the ArcGIS records into the simpler station format used by the program.
-4. Filter the stations by distance, connector, charging speed, price, and availability.
-5. View a ranked list of matching stations.
-6. Select a station to view more details.
-7. Repeat the search or exit.
+### Features
 
-The eventual version could use a web/mobile-style interface with an interactive map, but the current version is intentionally CLI-based as required by the project specification.
+- **Address-based search:** Enter an address, city, or landmark instead of manually entering latitude and longitude.
+- **Geocoding:** Converts the entered location into geographic coordinates using the OpenStreetMap Nominatim service.
+- **Interactive map:** Displays nearby charging stations on a map.
+- **Station filters:** Narrow results by distance, connector type, minimum charging speed, maximum price, and availability.
+- **Station details:** View information about matching charging stations, including location, connector types, charging speed, and pricing when available.
+- **Live data:** Retrieves station information from the ArcGIS Alternative Fueling Stations Feature Service.
+- **Fallback data:** Uses a local sample dataset if the live ArcGIS service cannot be reached.
 
-## Data source
+## Data Sources
 
-Version 1 uses the ArcGIS **Alternative Fueling Stations** Feature Service provided by ArcGIS. The service describes the dataset as an alternative-fueling-station dataset updated daily from the National Laboratory of the Rockies (NLR) and includes station locations, EV connector information, EV charging counts, network, pricing, access, and status fields.
+### ArcGIS Alternative Fueling Stations
 
-ArcGIS service:
+The application retrieves EV charging station information from the ArcGIS Alternative Fueling Stations Feature Service.
+
+Service URL:
 
 `https://services.arcgis.com/xOi1kZaI0eWDREZv/ArcGIS/rest/services/Alternative_Fueling_Stations/FeatureServer/0`
 
-The program sends a JSON query for records where `fuel_type_code='ELEC'` within 25 miles of the latitude/longitude entered by the user.
+The application queries electric vehicle charging stations near the coordinates returned by the geocoding service.
 
-No API key is required for this public ArcGIS query.
+### OpenStreetMap Nominatim
 
-## Local fallback data
+The application uses the Nominatim geocoding service to convert user-entered addresses and locations into latitude and longitude coordinates.
 
-The project also includes `data/sample_stations.json`. If the ArcGIS service is unavailable, the program automatically falls back to this small local dataset so the complete CLI workflow can still be tested.
+Service URL:
 
-## Files
+`https://nominatim.openstreetmap.org/search`
 
-- `main.py` — main program and all Version 1 functions.
-- `bugs.md` — bug/issue tracking notes.
-- `.gitignore` — Python/Git ignore rules, including `keys.py` in case credentials are needed for a future service.
+## Project Structure
+
+- `app.py` — Main Streamlit application, data retrieval, station processing, and filtering.
+- `geocoding.py` — Address-to-coordinate geocoding functionality.
+- `requirements.txt` — Python dependencies.
+- `bugs.md` — Bug and issue tracking notes.
 - `LICENSE` — MIT license.
-- `docs/` — project sketch and project specification PDFs.
-- `data/sample_stations.json` — small local dataset used as a fallback for testing.
-
-## Run
-
-From the project root:
-
-```bash
-python main.py
-```
-
-No API key is required for the ArcGIS data source or for the included sample-data fallback.
-
+- `.gitignore` — Git ignore rules.
+- `docs/` — Project sketch and specification PDFs.
+- `data/sample_stations.json` — Local sample dataset used as a fallback.
 
 ## Installation
 
-Version 2 uses the `requests` library for the ArcGIS web request. From the project folder, install the dependency with:
+Clone the repository and navigate to the project directory.
+
+Install the required dependencies:
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-Then run:
+## Running the Application
+
+From the project root, run:
 
 ```bash
-python3 main.py
+python3 -m streamlit run app.py
 ```
 
-The program keeps SSL certificate verification enabled. If the live ArcGIS request fails, it falls back to the local sample dataset and reports the failure.
+Streamlit will open the application in your web browser.
+
+Enter an address or location to search for nearby charging stations.
+
+## Version 1
+
+The original Version 1 application used a command-line interface and required users to enter latitude and longitude manually. It established the core data retrieval, station normalization, distance calculations, and filtering functionality.
+
+Version 2 builds on that foundation by introducing address-based search and a graphical interface.
+
+## Notes and Limitations
+
+- Charging station information depends on the data available from the ArcGIS service.
+- Pricing information is not available for every station, so some results may not include a cost per kWh.
+- If the live ArcGIS service is unavailable, the application can use the included sample dataset.
+- The application keeps SSL certificate verification enabled for web requests.
+
+## Dependencies
+
+- Python 3.13
+- Streamlit
+- Requests
